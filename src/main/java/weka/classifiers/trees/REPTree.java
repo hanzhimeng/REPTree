@@ -256,14 +256,12 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 				if (instance.isMissing(m_Attribute)) {
 					double totalHeight = 1;
 					for (int i = 0; i < m_Successors.length; i++) {
-						totalHeight += m_Successors[i].getHeight(instance)
-								* m_Prop[i];
+						totalHeight += m_Successors[i].getHeight(instance) * m_Prop[i];
 					}
 					h = totalHeight;
 				} else if (m_Info.attribute(m_Attribute).isNominal()) {
 					// For nominal attributes
-					h = m_Successors[(int) instance.value(m_Attribute)]
-							.getHeight(instance);
+					h = m_Successors[(int) instance.value(m_Attribute)].getHeight(instance);
 					h++;
 				} else if (instance.value(m_Attribute) < m_SplitPoint) {
 					h = m_Successors[0].getHeight(instance);
