@@ -183,10 +183,13 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		protected double[] distributionForInstance(Instance instance,
 				double[] prob) throws Exception {
 			double[] returnedDist = null;
+			double N = 0.0; // Global cardinality
+			for (double d : m_Distribution) {
+				N += d;
+			}
 			if (m_Smoothing == SMOOTHING_M_BRANCH) {
 				double height = getHeight(instance);
 				double delta = 0.0;
-				double N = 0.0;
 				delta = 1 - (1.0 / height);
 
 				double m = m_M * (1 + delta * Math.sqrt(numInstances));
@@ -194,16 +197,12 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					m_ClassProbs = new double[instance.numClasses()];
 				}
 
-				for (double d : m_Distribution) {
-					N += d;
-				}
-
 				for (int i = 0; i < m_Distribution.length; i++) {
-					m_ClassProbs[i] = (m_Distribution[i] + m * prob[i])
-							/ (N + m);
+					m_ClassProbs[i] = (m_Distribution[i] + m * prob[i]) / (N + m);
 				}
 				System.arraycopy(m_ClassProbs, 0, prob, 0, m_ClassProbs.length);
 			}
+			
 			if (m_Attribute > -1) {
 				// Node is not a leaf
 
@@ -1511,12 +1510,15 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 	public static final int SMOOTHING_M_ESTIMATE = 4;
 	/** M-Branch. */
 	public static final int SMOOTHING_M_BRANCH = 8;
+	/** PPM. */
+	public static final int SMOOTHING_PPM = 16;
 
 	public static final Tag[] TAGS_SMOOTHING = {
 			new Tag(SMOOTHING_NONE, "No Smoothing"),
 			new Tag(SMOOTHING_LAPLACE, "Laplace Correction"),
 			new Tag(SMOOTHING_M_ESTIMATE, "M-Estimate"),
-			new Tag(SMOOTHING_M_BRANCH, "M-Branch") };
+			new Tag(SMOOTHING_M_BRANCH, "M-Branch"),
+			new Tag(SMOOTHING_PPM, "PPM")};
 
 	/**
 	 * Returns the tip text for this property.
@@ -1793,8 +1795,9 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 
 		newVector.addElement(new Option("\tLaplace correction", "A", 1, "-A"));
 
-		newVector
-				.addElement(new Option("\tM-Estimate smoothing", "E", 1, "-E"));
+		newVector.addElement(new Option("\tM-Estimate smoothing", "E", 1, "-E"));
+		
+		newVector.addElement(new Option("\tPPM smoothing", "C", 1, "-C"));
 		return newVector.elements();
 	}
 
@@ -1805,7 +1808,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 	 */
 	public String[] getOptions() {
 
-		String[] options = new String[18];
+		String[] options = new String[20];
 		int current = 0;
 		options[current++] = "-M";
 		options[current++] = "" + (int) getMinNum();
@@ -1832,6 +1835,11 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 
 		if (m_Smoothing == SMOOTHING_M_BRANCH) {
 			options[current++] = "-B";
+			options[current++] = "";
+		}
+		
+		if (m_Smoothing == SMOOTHING_PPM) {
+			options[current++] = "-C";
 			options[current++] = "";
 		}
 
@@ -1926,6 +1934,8 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			setSmoothing(new SelectedTag(SMOOTHING_M_ESTIMATE, TAGS_SMOOTHING));
 		} else if (Utils.getFlag('B', options)) {
 			setSmoothing(new SelectedTag(SMOOTHING_M_BRANCH, TAGS_SMOOTHING));
+		} else if (Utils.getFlag('C', options)) {
+			setSmoothing(new SelectedTag(SMOOTHING_PPM, TAGS_SMOOTHING));
 		}
 		Utils.checkForRemainingOptions(options);
 	}
