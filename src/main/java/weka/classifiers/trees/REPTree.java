@@ -203,6 +203,27 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 				System.arraycopy(m_ClassProbs, 0, prob, 0, m_ClassProbs.length);
 			}
 			
+			//Move to BuildTree ignore empty node.
+			if (m_Smoothing == SMOOTHING_PPM) {
+				double weight = 0;
+				if (m_Distribution != null){
+					double e = 1/(1+N);
+					weight = (1-e)*getProduct(instance);//Move product outside the loop.
+					
+					for (int i = 0; i < m_Distribution.length; i++) {
+						prob[i] += (m_Distribution[i]/N)*weight;
+					}
+//					System.out.println(prob);
+					if (m_ClassProbs == null) {
+						m_ClassProbs = new double[instance.numClasses()];
+					}
+					System.arraycopy(prob, 0, m_ClassProbs, 0, prob.length);
+				}
+				
+				
+				
+			}
+			
 			if (m_Attribute > -1) {
 				// Node is not a leaf
 
@@ -211,8 +232,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					returnedDist = new double[m_Info.numClasses()];
 					// Split instance up
 					for (int i = 0; i < m_Successors.length; i++) {
-						double[] help = m_Successors[i]
-								.distributionForInstance(instance, prob);
+						double[] help = m_Successors[i].distributionForInstance(instance, prob);//Make a copy of prob in a local variable.
 						if (help != null) {
 							for (int j = 0; j < help.length; j++) {
 								returnedDist[j] += m_Prop[i] * help[j];
@@ -272,6 +292,34 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 				return h;
 			}
 		}
+		/**
+		 * Returns the weight in PPM styled smoothing
+		 */
+		public double getProduct(Instance instance){
+			double w = 0;
+			double N = 0;
+			for(double d:m_Distribution){
+				N+=d;
+			}
+			double e = 1/(1+N);
+			
+			if (m_Attribute == -1) {
+				return 1;
+			} else {
+				if (m_Info.attribute(m_Attribute).isNominal()) {
+					// For nominal attributes
+					w = m_Successors[(int) instance.value(m_Attribute)].getProduct(instance);
+					w*=e;
+				} else if (instance.value(m_Attribute) < m_SplitPoint) {
+					w = m_Successors[0].getProduct(instance);
+					w*=e;
+				} else {
+					w = m_Successors[1].getProduct(instance);
+					w*=e;
+				}
+				return w;
+			}
+		}
 
 		/**
 		 * Returns a string containing java source code equivalent to the test
@@ -280,7 +328,8 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 * to set the >= condition test (the last one) of a numeric splitpoint
 		 * to just "true" (because being there in the flow implies that the
 		 * previous less-than test failed).
-		 * 
+		 * |
+		 * }	
 		 * @param index
 		 *            index of the value tested
 		 * @return a value of type 'String'
@@ -610,7 +659,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			// and make space for potential info from pruning data
 			m_Info = header;
 			m_HoldOutDist = new double[data.numClasses()];
-
+			
 			// Make leaf if there are no training instances
 			int helpIndex = 0;
 			if (data.classIndex() == 0) {
@@ -2139,10 +2188,13 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 	 */
 	public double[] distributionForInstance(Instance instance) throws Exception {
 		double prob[] = new double[instance.numClasses()];
+		double product = m_Tree.getProduct(instance);
 		for (int i = 0; i < prob.length; i++) {
 			prob[i] = 1.0 / instance.numClasses();
+			//Add PPM if clause.
+			prob[i]*=product;
 		}
-
+		
 		if (m_zeroR != null) {
 			return m_zeroR.distributionForInstance(instance);
 		} else {
