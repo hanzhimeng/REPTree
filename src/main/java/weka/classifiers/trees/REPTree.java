@@ -306,7 +306,13 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			if (m_Attribute == -1) {
 				return 1;
 			} else {
-				if (m_Info.attribute(m_Attribute).isNominal()) {
+				if (instance.isMissing(m_Attribute)){
+					double totalWeight = 0;
+					for (int i = 0; i<m_Successors.length; i++){
+						totalWeight += m_Successors[i].getProduct(instance) * m_Prop[i];
+					}
+					w = totalWeight;
+				} else if (m_Info.attribute(m_Attribute).isNominal()) {
 					// For nominal attributes
 					w = m_Successors[(int) instance.value(m_Attribute)].getProduct(instance);
 					w*=e;
