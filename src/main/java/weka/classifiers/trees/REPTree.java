@@ -219,9 +219,6 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					}
 					System.arraycopy(prob, 0, m_ClassProbs, 0, prob.length);
 				}
-				
-				
-				
 			}
 			
 			if (m_Attribute > -1) {
@@ -298,10 +295,6 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		public double getProduct(Instance instance){
 			double w = 0;
 			double N = 0;
-			for(double d:m_Distribution){
-				N+=d;
-			}
-			double e = 1/(1+N);
 			
 			if (m_Attribute == -1) {
 				return 1;
@@ -310,17 +303,31 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					double totalWeight = 0;
 					for (int i = 0; i<m_Successors.length; i++){
 						totalWeight += m_Successors[i].getProduct(instance) * m_Prop[i];
+						System.out.println("weight"+i+"==>"+m_Successors[i].getProduct(instance));
 					}
 					w = totalWeight;
+					System.out.println("weight==>"+w);
 				} else if (m_Info.attribute(m_Attribute).isNominal()) {
 					// For nominal attributes
 					w = m_Successors[(int) instance.value(m_Attribute)].getProduct(instance);
+					for(double d:m_Successors[(int) instance.value(m_Attribute)].m_Distribution){
+						N+=d;
+					}
+					double e = 1/(1+N);
 					w*=e;
 				} else if (instance.value(m_Attribute) < m_SplitPoint) {
 					w = m_Successors[0].getProduct(instance);
+					for(double d:m_Successors[0].m_Distribution){
+						N+=d;
+					}
+					double e = 1/(1+N);
 					w*=e;
 				} else {
 					w = m_Successors[1].getProduct(instance);
+					for(double d:m_Successors[1].m_Distribution){
+						N+=d;
+					}
+					double e = 1/(1+N);
 					w*=e;
 				}
 				return w;
@@ -2200,7 +2207,6 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			//Add PPM if clause.
 			prob[i]*=product;
 		}
-		
 		if (m_zeroR != null) {
 			return m_zeroR.distributionForInstance(instance);
 		} else {
