@@ -94,7 +94,7 @@ import java.util.Vector;
  * <!-- options-end -->
  * 
  * @author Eibe Frank (eibe@cs.waikato.ac.nz)
- * @version $Revision: 5928 $
+ * @version $Revision: 6746 $
  */
 public class REPTree extends AbstractClassifier implements OptionHandler,
 		WeightedInstancesHandler, Drawable, AdditionalMeasureProducer,
@@ -193,43 +193,39 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 				delta = 1 - (1.0 / height);
 
 				double m = m_M * (1 + delta * Math.sqrt(numInstances));
-				if (m_ClassProbs == null) {
-					m_ClassProbs = new double[instance.numClasses()];
-				}
 
 				for (int i = 0; i < m_Distribution.length; i++) {
-					m_ClassProbs[i] = (m_Distribution[i] + m * prob[i]) / (N + m);
+					prob[i] = (m_Distribution[i] + m * prob[i]) / (N + m);
 				}
-				System.arraycopy(m_ClassProbs, 0, prob, 0, m_ClassProbs.length);
 			}
-			
-			//Move to BuildTree ignore empty node.
+
+			// Move to BuildTree ignore empty node.
 			if (m_Smoothing == SMOOTHING_PPM) {
 				double weight = 0;
-				if (m_Distribution != null){
-					double e = 1/(1+N);
-					weight = (1-e)*getProduct(instance);//Move product outside the loop.
-					
+				if (m_ClassProbs != null) {
+					double e = 1 / (1 + N);
+					weight = (1 - e) * getProduct(instance);// Move product
+															// outside the loop.
 					for (int i = 0; i < m_Distribution.length; i++) {
-						prob[i] += (m_Distribution[i]/N)*weight;
+						prob[i] += (m_Distribution[i] / N) * weight;
 					}
-//					System.out.println(prob);
-					if (m_ClassProbs == null) {
-						m_ClassProbs = new double[instance.numClasses()];
-					}
-					System.arraycopy(prob, 0, m_ClassProbs, 0, prob.length);
 				}
 			}
-			
-			if (m_Attribute > -1) {
-				// Node is not a leaf
 
+			if (m_Attribute > -1) {
+
+				// Node is not a leaf
 				if (instance.isMissing(m_Attribute)) {
+
 					// Value is missing
 					returnedDist = new double[m_Info.numClasses()];
+
 					// Split instance up
 					for (int i = 0; i < m_Successors.length; i++) {
-						double[] help = m_Successors[i].distributionForInstance(instance, prob);//Make a copy of prob in a local variable.
+						double[] copy = new double[prob.length]; // EIBE
+						System.arraycopy(prob, 0, copy, 0, prob.length); // EIBE
+						double[] help = m_Successors[i]
+								.distributionForInstance(instance, copy); // EIBE
 						if (help != null) {
 							for (int j = 0; j < help.length; j++) {
 								returnedDist[j] += m_Prop[i] * help[j];
@@ -252,10 +248,15 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					}
 				}
 			}
-
 			if ((m_Attribute == -1) || (returnedDist == null)) {
+
 				// Node is a leaf or successor is empty
-				return m_ClassProbs;
+				if ((m_Smoothing == SMOOTHING_M_BRANCH)
+						|| (m_Smoothing == SMOOTHING_PPM)) { // EIBE
+					return prob; // EIBE
+				} else {
+					return m_ClassProbs;
+				}
 			} else {
 				return returnedDist;
 			}
@@ -272,12 +273,14 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 				if (instance.isMissing(m_Attribute)) {
 					double totalHeight = 1;
 					for (int i = 0; i < m_Successors.length; i++) {
-						totalHeight += m_Successors[i].getHeight(instance) * m_Prop[i];
+						totalHeight += m_Successors[i].getHeight(instance)
+								* m_Prop[i];
 					}
 					h = totalHeight;
 				} else if (m_Info.attribute(m_Attribute).isNominal()) {
 					// For nominal attributes
-					h = m_Successors[(int) instance.value(m_Attribute)].getHeight(instance);
+					h = m_Successors[(int) instance.value(m_Attribute)]
+							.getHeight(instance);
 					h++;
 				} else if (instance.value(m_Attribute) < m_SplitPoint) {
 					h = m_Successors[0].getHeight(instance);
@@ -289,46 +292,71 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 				return h;
 			}
 		}
+
+		/**
+		 * Returns the escape probability
+		 * 
+		 */
+		public double getEscProb(int N) {
+			double e = 0;
+			int q = m_Info.numClasses();
+			if (m_Escape == ESCAPE_ONE){
+				e = 1/(1+N);
+			} else if (m_Escape == ESCAPE_TWO) {
+				e = q / N;
+			} else if (m_Escape == ESCAPE_THREE){
+				
+			}
+			return e;
+
+		}
+
 		/**
 		 * Returns the weight in PPM styled smoothing
 		 */
-		public double getProduct(Instance instance){
+		public double getProduct(Instance instance) {
 			double w = 0;
 			double N = 0;
-			
 			if (m_Attribute == -1) {
 				return 1;
 			} else {
-				if (instance.isMissing(m_Attribute)){
+				if (instance.isMissing(m_Attribute)) {
 					double totalWeight = 0;
-					for (int i = 0; i<m_Successors.length; i++){
-						totalWeight += m_Successors[i].getProduct(instance) * m_Prop[i];
-						System.out.println("weight"+i+"==>"+m_Successors[i].getProduct(instance));
+					for (int i = 0; i < m_Successors.length; i++) {
+						w = m_Successors[i].getProduct(instance);
+						N = 0; // EIBE
+						for (double d : m_Successors[i].m_Distribution) { // EIBE
+							N += d; // EIBE
+						}
+						double e = 1 / (1 + N); // EIBE
+						w *= e; // EIBE
+						totalWeight += w * m_Prop[i];
 					}
 					w = totalWeight;
-					System.out.println("weight==>"+w);
 				} else if (m_Info.attribute(m_Attribute).isNominal()) {
 					// For nominal attributes
-					w = m_Successors[(int) instance.value(m_Attribute)].getProduct(instance);
-					for(double d:m_Successors[(int) instance.value(m_Attribute)].m_Distribution){
-						N+=d;
+					w = m_Successors[(int) instance.value(m_Attribute)]
+							.getProduct(instance);
+					for (double d : m_Successors[(int) instance
+							.value(m_Attribute)].m_Distribution) {
+						N += d;
 					}
-					double e = 1/(1+N);
-					w*=e;
+					double e = 1 / (1 + N);
+					w *= e;
 				} else if (instance.value(m_Attribute) < m_SplitPoint) {
 					w = m_Successors[0].getProduct(instance);
-					for(double d:m_Successors[0].m_Distribution){
-						N+=d;
+					for (double d : m_Successors[0].m_Distribution) {
+						N += d;
 					}
-					double e = 1/(1+N);
-					w*=e;
+					double e = 1 / (1 + N);
+					w *= e;
 				} else {
 					w = m_Successors[1].getProduct(instance);
-					for(double d:m_Successors[1].m_Distribution){
-						N+=d;
+					for (double d : m_Successors[1].m_Distribution) {
+						N += d;
 					}
-					double e = 1/(1+N);
-					w*=e;
+					double e = 1 / (1 + N);
+					w *= e;
 				}
 				return w;
 			}
@@ -341,13 +369,13 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 * to set the >= condition test (the last one) of a numeric splitpoint
 		 * to just "true" (because being there in the flow implies that the
 		 * previous less-than test failed).
-		 * |
-		 * }	
+		 * 
 		 * @param index
 		 *            index of the value tested
 		 * @return a value of type 'String'
 		 */
 		public final String sourceExpression(int index) {
+
 			StringBuffer expr = null;
 			if (index < 0) {
 				return "i[" + m_Attribute + "] == null";
@@ -664,27 +692,30 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 * @throws Exception
 		 *             if generation fails
 		 */
-		protected void buildTree(int[][] sortedIndices, double[][] weights,
+		protected void buildTree(int[][][] sortedIndices, double[][][] weights,
 				Instances data, double totalWeight, double[] classProbs,
 				Instances header, double minNum, double minVariance, int depth,
 				int maxDepth) throws Exception {
+
 			// Store structure of dataset, set minimum number of instances
 			// and make space for potential info from pruning data
 			m_Info = header;
 			m_HoldOutDist = new double[data.numClasses()];
-			
+
 			// Make leaf if there are no training instances
 			int helpIndex = 0;
 			if (data.classIndex() == 0) {
 				helpIndex = 1;
 			}
-			if (sortedIndices[helpIndex].length == 0) {
+			if (sortedIndices[0][helpIndex].length == 0) {
 				if (data.classAttribute().isNumeric()) {
 					m_Distribution = new double[2];
 				} else {
 					m_Distribution = new double[data.numClasses()];
 				}
 				m_ClassProbs = null;
+				sortedIndices[0] = null;
+				weights[0] = null;
 				return;
 			}
 
@@ -693,12 +724,13 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 
 				// Compute prior variance
 				double totalSum = 0, totalSumSquared = 0, totalSumOfWeights = 0;
-				for (int i = 0; i < sortedIndices[helpIndex].length; i++) {
-					Instance inst = data.instance(sortedIndices[helpIndex][i]);
-					totalSum += inst.classValue() * weights[helpIndex][i];
+				for (int i = 0; i < sortedIndices[0][helpIndex].length; i++) {
+					Instance inst = data
+							.instance(sortedIndices[0][helpIndex][i]);
+					totalSum += inst.classValue() * weights[0][helpIndex][i];
 					totalSumSquared += inst.classValue() * inst.classValue()
-							* weights[helpIndex][i];
-					totalSumOfWeights += weights[helpIndex][i];
+							* weights[0][helpIndex][i];
+					totalSumOfWeights += weights[0][helpIndex][i];
 				}
 				priorVar = singleVariance(totalSum, totalSumSquared,
 						totalSumOfWeights);
@@ -750,11 +782,14 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					}
 					Utils.normalize(m_ClassProbs);
 				} else {
+
 					// Numeric case
 					m_Distribution = new double[2];
 					m_Distribution[0] = priorVar;
 					m_Distribution[1] = totalWeight;
 				}
+				sortedIndices[0] = null;
+				weights[0] = null;
 				return;
 			}
 
@@ -771,17 +806,18 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 				for (int i = 0; i < data.numAttributes(); i++) {
 					if (i != data.classIndex()) {
 						splits[i] = distribution(props, dists, i,
-								sortedIndices[i], weights[i],
+								sortedIndices[0][i], weights[0][i],
 								totalSubsetWeights, data);
 						vals[i] = gain(dists[i], priorVal(dists[i]));
 					}
 				}
 			} else {
+
 				// Numeric case
 				for (int i = 0; i < data.numAttributes(); i++) {
 					if (i != data.classIndex()) {
 						splits[i] = numericDistribution(props, dists, i,
-								sortedIndices[i], weights[i],
+								sortedIndices[0][i], weights[0][i],
 								totalSubsetWeights, data, vals);
 					}
 				}
@@ -806,28 +842,49 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			// Any useful split found?
 			if ((vals[m_Attribute] > 0) && (count > 1)) {
 
-				// Build subtrees
+				// Set split point, proportions, and temp arrays
 				m_SplitPoint = splits[m_Attribute];
 				m_Prop = props[m_Attribute];
-				int[][][] subsetIndices = new int[numAttVals][data
+				double[][] attSubsetDists = dists[m_Attribute];
+				double[] attTotalSubsetWeights = totalSubsetWeights[m_Attribute];
+
+				// Release some memory before proceeding further
+				vals = null;
+				dists = null;
+				props = null;
+				totalSubsetWeights = null;
+				splits = null;
+
+				// Split data
+				int[][][][] subsetIndices = new int[numAttVals][1][data
 						.numAttributes()][0];
-				double[][][] subsetWeights = new double[numAttVals][data
+				double[][][][] subsetWeights = new double[numAttVals][1][data
 						.numAttributes()][0];
 				splitData(subsetIndices, subsetWeights, m_Attribute,
-						m_SplitPoint, sortedIndices, weights, data);
+						m_SplitPoint, sortedIndices[0], weights[0], data);
+
+				// Release memory
+				sortedIndices[0] = null;
+				weights[0] = null;
+
+				// Build successors
 				m_Successors = new Tree[numAttVals];
 				for (int i = 0; i < numAttVals; i++) {
 					m_Successors[i] = new Tree();
 					m_Successors[i].buildTree(subsetIndices[i],
-							subsetWeights[i], data,
-							totalSubsetWeights[m_Attribute][i],
-							dists[m_Attribute][i], header, minNum, minVariance,
+							subsetWeights[i], data, attTotalSubsetWeights[i],
+							attSubsetDists[i], header, minNum, minVariance,
 							depth + 1, maxDepth);
+
+					// Release as much memory as we can
+					attSubsetDists[i] = null;
 				}
 			} else {
 
 				// Make leaf
 				m_Attribute = -1;
+				sortedIndices[0] = null;
+				weights[0] = null;
 			}
 
 			// Normalize class counts
@@ -882,8 +939,8 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 * @throws Exception
 		 *             if something goes wrong
 		 */
-		protected void splitData(int[][][] subsetIndices,
-				double[][][] subsetWeights, int att, double splitPoint,
+		protected void splitData(int[][][][] subsetIndices,
+				double[][][][] subsetWeights, int att, double splitPoint,
 				int[][] sortedIndices, double[][] weights, Instances data)
 				throws Exception {
 
@@ -898,8 +955,8 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 						// For nominal attributes
 						num = new int[data.attribute(att).numValues()];
 						for (int k = 0; k < num.length; k++) {
-							subsetIndices[k][i] = new int[sortedIndices[i].length];
-							subsetWeights[k][i] = new double[sortedIndices[i].length];
+							subsetIndices[k][0][i] = new int[sortedIndices[i].length];
+							subsetWeights[k][0][i] = new double[sortedIndices[i].length];
 						}
 						for (j = 0; j < sortedIndices[i].length; j++) {
 							Instance inst = data.instance(sortedIndices[i][j]);
@@ -908,16 +965,16 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 								// Split instance up
 								for (int k = 0; k < num.length; k++) {
 									if (m_Prop[k] > 0) {
-										subsetIndices[k][i][num[k]] = sortedIndices[i][j];
-										subsetWeights[k][i][num[k]] = m_Prop[k]
+										subsetIndices[k][0][i][num[k]] = sortedIndices[i][j];
+										subsetWeights[k][0][i][num[k]] = m_Prop[k]
 												* weights[i][j];
 										num[k]++;
 									}
 								}
 							} else {
 								int subset = (int) inst.value(att);
-								subsetIndices[subset][i][num[subset]] = sortedIndices[i][j];
-								subsetWeights[subset][i][num[subset]] = weights[i][j];
+								subsetIndices[subset][0][i][num[subset]] = sortedIndices[i][j];
+								subsetWeights[subset][0][i][num[subset]] = weights[i][j];
 								num[subset]++;
 							}
 						}
@@ -926,8 +983,8 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 						// For numeric attributes
 						num = new int[2];
 						for (int k = 0; k < 2; k++) {
-							subsetIndices[k][i] = new int[sortedIndices[i].length];
-							subsetWeights[k][i] = new double[weights[i].length];
+							subsetIndices[k][0][i] = new int[sortedIndices[i].length];
+							subsetWeights[k][0][i] = new double[weights[i].length];
 						}
 						for (j = 0; j < sortedIndices[i].length; j++) {
 							Instance inst = data.instance(sortedIndices[i][j]);
@@ -936,8 +993,8 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 								// Split instance up
 								for (int k = 0; k < num.length; k++) {
 									if (m_Prop[k] > 0) {
-										subsetIndices[k][i][num[k]] = sortedIndices[i][j];
-										subsetWeights[k][i][num[k]] = m_Prop[k]
+										subsetIndices[k][0][i][num[k]] = sortedIndices[i][j];
+										subsetWeights[k][0][i][num[k]] = m_Prop[k]
 												* weights[i][j];
 										num[k]++;
 									}
@@ -945,8 +1002,8 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 							} else {
 								int subset = (inst.value(att) < splitPoint) ? 0
 										: 1;
-								subsetIndices[subset][i][num[subset]] = sortedIndices[i][j];
-								subsetWeights[subset][i][num[subset]] = weights[i][j];
+								subsetIndices[subset][0][i][num[subset]] = sortedIndices[i][j];
+								subsetWeights[subset][0][i][num[subset]] = weights[i][j];
 								num[subset]++;
 							}
 						}
@@ -955,13 +1012,13 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					// Trim arrays
 					for (int k = 0; k < num.length; k++) {
 						int[] copy = new int[num[k]];
-						System.arraycopy(subsetIndices[k][i], 0, copy, 0,
+						System.arraycopy(subsetIndices[k][0][i], 0, copy, 0,
 								num[k]);
-						subsetIndices[k][i] = copy;
+						subsetIndices[k][0][i] = copy;
 						double[] copyWeights = new double[num[k]];
-						System.arraycopy(subsetWeights[k][i], 0, copyWeights,
-								0, num[k]);
-						subsetWeights[k][i] = copyWeights;
+						System.arraycopy(subsetWeights[k][0][i], 0,
+								copyWeights, 0, num[k]);
+						subsetWeights[k][0][i] = copyWeights;
 					}
 				}
 			}
@@ -1266,6 +1323,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 * @return the variance
 		 */
 		protected double variance(double[] s, double[] sS, double[] sumOfWeights) {
+
 			double var = 0;
 
 			for (int i = 0; i < s.length; i++) {
@@ -1298,6 +1356,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 * @return the splitting criterion
 		 */
 		protected double priorVal(double[][] dist) {
+
 			return ContingencyTables.entropyOverColumns(dist);
 		}
 
@@ -1310,6 +1369,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 * @return the gain after splitting
 		 */
 		protected double gain(double[][] dist, double priorVal) {
+
 			return priorVal - ContingencyTables.entropyConditionedOnRows(dist);
 		}
 
@@ -1321,6 +1381,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 *             if pruning fails for some reason
 		 */
 		protected double reducedErrorPrune() throws Exception {
+
 			// Is node leaf ?
 			if (m_Attribute == -1) {
 				return m_HoldOutError;
@@ -1351,6 +1412,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 *             if something goes wrong
 		 */
 		protected void insertHoldOutSet(Instances data) throws Exception {
+
 			for (int i = 0; i < data.numInstances(); i++) {
 				insertHoldOutInstance(data.instance(i), data.instance(i)
 						.weight(), this);
@@ -1528,7 +1590,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 * @return the revision
 		 */
 		public String getRevision() {
-			return RevisionUtils.extract("$Revision: 5928 $");
+			return RevisionUtils.extract("$Revision: 6746 $");
 		}
 	}
 
@@ -1536,6 +1598,9 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 
 	/** The smoothing method */
 	protected int m_Smoothing = SMOOTHING_NONE;
+	
+	/** The escape method */
+	protected int m_Escape = ESCAPE_ONE;
 
 	/** The Tree object */
 	protected Tree m_Tree = null;
@@ -1580,8 +1645,22 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			new Tag(SMOOTHING_LAPLACE, "Laplace Correction"),
 			new Tag(SMOOTHING_M_ESTIMATE, "M-Estimate"),
 			new Tag(SMOOTHING_M_BRANCH, "M-Branch"),
-			new Tag(SMOOTHING_PPM, "PPM")};
+			new Tag(SMOOTHING_PPM, "PPM") };
 
+	
+	/** Escape methods. */
+	public static final int ESCAPE_ONE = 1;
+	
+	public static final int ESCAPE_TWO = 2;
+
+	public static final int ESCAPE_THREE = 4;
+	
+	public static final Tag[] TAGS_ESCAPE = {
+		new Tag(ESCAPE_ONE, "Escape Method 1"),
+		new Tag(ESCAPE_TWO, "Escape Method 2"),
+		new Tag(ESCAPE_THREE, "Escape Method 3")
+	};
+	
 	/**
 	 * Returns the tip text for this property.
 	 * 
@@ -1614,6 +1693,30 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 
 		if (newMethod.getTags() == TAGS_SMOOTHING) {
 			m_Smoothing = newMethod.getSelectedTag().getID();
+		}
+	}
+	
+	/**
+	 * Gets the smoothing method used. Will be one of SMOOTHING_LAPLACE,
+	 * SMOOTHING_M_ESTIMATE, or SMOOTHING_M_BRANCH
+	 * 
+	 * @return the smoothing method used.
+	 */
+	public SelectedTag getEscapeMethod() {
+		return new SelectedTag(m_Escape, TAGS_ESCAPE);
+	}
+
+	/**
+	 * Sets the distance weighting method used. Values other than WEIGHT_NONE,
+	 * WEIGHT_INVERSE, or WEIGHT_SIMILARITY will be ignored.
+	 * 
+	 * @param newMethod
+	 *            the distance weighting method to use
+	 */
+	public void setEscapeMethod(SelectedTag newMethod) {
+
+		if (newMethod.getTags() == TAGS_ESCAPE) {
+			m_Escape = newMethod.getSelectedTag().getID();
 		}
 	}
 
@@ -1857,8 +1960,11 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 
 		newVector.addElement(new Option("\tLaplace correction", "A", 1, "-A"));
 
-		newVector.addElement(new Option("\tM-Estimate smoothing", "E", 1, "-E"));
-		
+		newVector
+				.addElement(new Option("\tM-Estimate smoothing", "E", 1, "-E"));
+
+		newVector.addElement(new Option("\tM-Branch smoothing", "B", 1, "-B"));
+
 		newVector.addElement(new Option("\tPPM smoothing", "C", 1, "-C"));
 		return newVector.elements();
 	}
@@ -1899,7 +2005,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			options[current++] = "-B";
 			options[current++] = "";
 		}
-		
+
 		if (m_Smoothing == SMOOTHING_PPM) {
 			options[current++] = "-C";
 			options[current++] = "";
@@ -1908,7 +2014,6 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		while (current < options.length) {
 			options[current++] = "";
 		}
-
 		return options;
 	}
 
@@ -1999,6 +2104,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		} else if (Utils.getFlag('C', options)) {
 			setSmoothing(new SelectedTag(SMOOTHING_PPM, TAGS_SMOOTHING));
 		}
+
 		Utils.checkForRemainingOptions(options);
 	}
 
@@ -2018,6 +2124,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 	 * @return an enumeration of the measure names
 	 */
 	public Enumeration enumerateMeasures() {
+
 		Vector newVector = new Vector(1);
 		newVector.addElement("measureTreeSize");
 		return newVector.elements();
@@ -2109,31 +2216,31 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		}
 
 		// Create array of sorted indices and weights
-		int[][] sortedIndices = new int[train.numAttributes()][0];
-		double[][] weights = new double[train.numAttributes()][0];
+		int[][][] sortedIndices = new int[1][train.numAttributes()][0];
+		double[][][] weights = new double[1][train.numAttributes()][0];
 		double[] vals = new double[train.numInstances()];
 		for (int j = 0; j < train.numAttributes(); j++) {
 			if (j != train.classIndex()) {
-				weights[j] = new double[train.numInstances()];
+				weights[0][j] = new double[train.numInstances()];
 				if (train.attribute(j).isNominal()) {
 
 					// Handling nominal attributes. Putting indices of
 					// instances with missing values at the end.
-					sortedIndices[j] = new int[train.numInstances()];
+					sortedIndices[0][j] = new int[train.numInstances()];
 					int count = 0;
 					for (int i = 0; i < train.numInstances(); i++) {
 						Instance inst = train.instance(i);
 						if (!inst.isMissing(j)) {
-							sortedIndices[j][count] = i;
-							weights[j][count] = inst.weight();
+							sortedIndices[0][j][count] = i;
+							weights[0][j][count] = inst.weight();
 							count++;
 						}
 					}
 					for (int i = 0; i < train.numInstances(); i++) {
 						Instance inst = train.instance(i);
 						if (inst.isMissing(j)) {
-							sortedIndices[j][count] = i;
-							weights[j][count] = inst.weight();
+							sortedIndices[0][j][count] = i;
+							weights[0][j][count] = inst.weight();
 							count++;
 						}
 					}
@@ -2144,10 +2251,10 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 						Instance inst = train.instance(i);
 						vals[i] = inst.value(j);
 					}
-					sortedIndices[j] = Utils.sort(vals);
+					sortedIndices[0][j] = Utils.sort(vals);
 					for (int i = 0; i < train.numInstances(); i++) {
-						weights[j][i] = train.instance(sortedIndices[j][i])
-								.weight();
+						weights[0][j][i] = train.instance(
+								sortedIndices[0][j][i]).weight();
 					}
 				}
 			}
@@ -2200,17 +2307,33 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 	 *             if computation fails
 	 */
 	public double[] distributionForInstance(Instance instance) throws Exception {
+
 		double prob[] = new double[instance.numClasses()];
-		double product = m_Tree.getProduct(instance);
+		double product = 1.0; // EIBE
+		if (m_Smoothing == SMOOTHING_PPM) { // EIBE
+			double eRoot = 1 / (1 + Utils.sum(m_Tree.m_Distribution));
+			product = eRoot * m_Tree.getProduct(instance); // EIBE
+		}
 		for (int i = 0; i < prob.length; i++) {
 			prob[i] = 1.0 / instance.numClasses();
-			//Add PPM if clause.
-			prob[i]*=product;
+			prob[i] *= product;
 		}
 		if (m_zeroR != null) {
 			return m_zeroR.distributionForInstance(instance);
 		} else {
-			return m_Tree.distributionForInstance(instance, prob);
+			double[] dist = m_Tree.distributionForInstance(instance, prob); // EIBE
+			if (!Utils.eq(1.0, Utils.sum(dist))) { // EIBE
+				System.err
+						.println("FATAL ERROR: Probabilities do not sum to 1"); // EIBE
+				for (double d : dist) { // EIBE
+					System.err.print(d + " "); // EIBE
+				}
+				System.err.println(); // EIBE
+				System.err.println(instance); // EIBE
+				System.err.println(REPTree.this); // EIBE
+				System.exit(1); // EIBE
+			}
+			return dist;
 		}
 	}
 
@@ -2294,6 +2417,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 	 * @return a string representation of the classifier
 	 */
 	public String toString() {
+
 		if (m_zeroR != null) {
 			return "No attributes other than class. Using ZeroR.\n\n"
 					+ m_zeroR.toString();
@@ -2311,7 +2435,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 	 * @return the revision
 	 */
 	public String getRevision() {
-		return RevisionUtils.extract("$Revision: 5928 $");
+		return RevisionUtils.extract("$Revision: 6746 $");
 	}
 
 	/**
