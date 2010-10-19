@@ -203,9 +203,8 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			if (m_Smoothing == SMOOTHING_PPM) {
 				double weight = 0;
 				if (m_ClassProbs != null) {
-					double e = 1 / (1 + N);
-					weight = (1 - e) * getProduct(instance);// Move product
-															// outside the loop.
+					double e = getEscProb();
+					weight = (1 - e) * getProduct(instance);
 					for (int i = 0; i < m_Distribution.length; i++) {
 						prob[i] += (m_Distribution[i] / N) * weight;
 					}
@@ -292,23 +291,39 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 				return h;
 			}
 		}
+		
+		public int getNumClassesInNode(){
+			int count = 0;
+			for(double d: m_Distribution){
+				if (d != 0){
+					count++;
+				}
+			}
+			return count;
+		}
 
 		/**
 		 * Returns the escape probability
-		 * 
+		 * N is the global cardinality of the node.
 		 */
-		public double getEscProb(int N) {
+		public double getEscProb() {
 			double e = 0;
-			int q = m_Info.numClasses();
+			int q = getNumClassesInNode();
+			double N = Utils.sum(m_Distribution);
 			if (m_Escape == ESCAPE_ONE){
 				e = 1/(1+N);
 			} else if (m_Escape == ESCAPE_TWO) {
+				if ((q > N) || (N == 0) || (q == 0)) {
+					return 1;
+				}
 				e = q / N;
 			} else if (m_Escape == ESCAPE_THREE){
-				
+				if (N == 0) {
+					return 1;
+				}
+				e = q / (N + q);
 			}
 			return e;
-
 		}
 
 		/**
@@ -316,7 +331,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		 */
 		public double getProduct(Instance instance) {
 			double w = 0;
-			double N = 0;
+//			double N = 0;
 			if (m_Attribute == -1) {
 				return 1;
 			} else {
@@ -324,11 +339,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					double totalWeight = 0;
 					for (int i = 0; i < m_Successors.length; i++) {
 						w = m_Successors[i].getProduct(instance);
-						N = 0; // EIBE
-						for (double d : m_Successors[i].m_Distribution) { // EIBE
-							N += d; // EIBE
-						}
-						double e = 1 / (1 + N); // EIBE
+						double e = m_Successors[i].getEscProb(); // EIBE
 						w *= e; // EIBE
 						totalWeight += w * m_Prop[i];
 					}
@@ -337,25 +348,15 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					// For nominal attributes
 					w = m_Successors[(int) instance.value(m_Attribute)]
 							.getProduct(instance);
-					for (double d : m_Successors[(int) instance
-							.value(m_Attribute)].m_Distribution) {
-						N += d;
-					}
-					double e = 1 / (1 + N);
+					double e = m_Successors[(int) instance.value(m_Attribute)].getEscProb();
 					w *= e;
 				} else if (instance.value(m_Attribute) < m_SplitPoint) {
 					w = m_Successors[0].getProduct(instance);
-					for (double d : m_Successors[0].m_Distribution) {
-						N += d;
-					}
-					double e = 1 / (1 + N);
+					double e = m_Successors[0].getEscProb();
 					w *= e;
 				} else {
 					w = m_Successors[1].getProduct(instance);
-					for (double d : m_Successors[1].m_Distribution) {
-						N += d;
-					}
-					double e = 1 / (1 + N);
+					double e = m_Successors[1].getEscProb();
 					w *= e;
 				}
 				return w;
@@ -701,7 +702,6 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			// and make space for potential info from pruning data
 			m_Info = header;
 			m_HoldOutDist = new double[data.numClasses()];
-
 			// Make leaf if there are no training instances
 			int helpIndex = 0;
 			if (data.classIndex() == 0) {
@@ -1966,6 +1966,12 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		newVector.addElement(new Option("\tM-Branch smoothing", "B", 1, "-B"));
 
 		newVector.addElement(new Option("\tPPM smoothing", "C", 1, "-C"));
+		
+		newVector.addElement(new Option("\tEscape method 1", "C1", 1, "-C1"));
+		
+		newVector.addElement(new Option("\tEscape method 2", "C2", 1, "-C2"));
+		
+		newVector.addElement(new Option("\tEscape method 3", "C3", 1, "-C3"));
 		return newVector.elements();
 	}
 
@@ -1976,7 +1982,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 	 */
 	public String[] getOptions() {
 
-		String[] options = new String[20];
+		String[] options = new String[24];
 		int current = 0;
 		options[current++] = "-M";
 		options[current++] = "" + (int) getMinNum();
@@ -2009,8 +2015,23 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		if (m_Smoothing == SMOOTHING_PPM) {
 			options[current++] = "-C";
 			options[current++] = "";
+			
+			if (m_Escape == ESCAPE_ONE){
+				options[current++] = "-C1";
+				options[current++] = "";
+			}
+			
+			if (m_Escape == ESCAPE_TWO){
+				options[current++] = "-C2";
+				options[current++] = "";
+			}
+			
+			if (m_Escape == ESCAPE_THREE){
+				options[current++] = "-C3";
+				options[current++] = "";
+			}
 		}
-
+		
 		while (current < options.length) {
 			options[current++] = "";
 		}
@@ -2103,6 +2124,14 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			setSmoothing(new SelectedTag(SMOOTHING_M_BRANCH, TAGS_SMOOTHING));
 		} else if (Utils.getFlag('C', options)) {
 			setSmoothing(new SelectedTag(SMOOTHING_PPM, TAGS_SMOOTHING));
+		}
+		
+		if (Utils.getFlag("C1", options)) {
+			setEscapeMethod(new SelectedTag(ESCAPE_ONE, TAGS_ESCAPE));
+		} else if (Utils.getFlag("C2", options)) {
+			setEscapeMethod(new SelectedTag(ESCAPE_TWO, TAGS_ESCAPE));
+		} else if (Utils.getFlag("C3", options)) {
+			setEscapeMethod(new SelectedTag(ESCAPE_THREE, TAGS_ESCAPE));
 		}
 
 		Utils.checkForRemainingOptions(options);
@@ -2311,7 +2340,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		double prob[] = new double[instance.numClasses()];
 		double product = 1.0; // EIBE
 		if (m_Smoothing == SMOOTHING_PPM) { // EIBE
-			double eRoot = 1 / (1 + Utils.sum(m_Tree.m_Distribution));
+			double eRoot = m_Tree.getEscProb();
 			product = eRoot * m_Tree.getProduct(instance); // EIBE
 		}
 		for (int i = 0; i < prob.length; i++) {
