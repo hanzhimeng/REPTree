@@ -206,7 +206,9 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					double e = getEscProb();
 					weight = (1 - e) * getProduct(instance);
 					for (int i = 0; i < m_Distribution.length; i++) {
-						prob[i] += (m_Distribution[i] / N) * weight;
+						if (N != 0){
+							prob[i] += (m_Distribution[i] / N) * weight;
+						}
 					}
 				}
 			}
@@ -317,6 +319,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 					return 1;
 				}
 				e = q / N;
+				
 			} else if (m_Escape == ESCAPE_THREE){
 				if (N == 0) {
 					return 1;
@@ -2359,7 +2362,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 				}
 				System.err.println(); // EIBE
 				System.err.println(instance); // EIBE
-				System.err.println(REPTree.this); // EIBE
+//				System.err.println(REPTree.this); // EIBE
 				System.exit(1); // EIBE
 			}
 			return dist;
