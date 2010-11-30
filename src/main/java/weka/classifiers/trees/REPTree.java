@@ -135,6 +135,9 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 
 		/** The subtrees of this tree. */
 		protected Tree[] m_Successors;
+		
+		/** The number of classes that have occurred i times */
+		protected int[] m_NumberOfClassesOccurred = null;
 
 		/** The attribute to split on. */
 		protected int m_Attribute = -1;
@@ -312,19 +315,36 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			double e = 0;
 			int q = getNumClassesInNode();
 			double N = Utils.sum(m_Distribution);
-			if (m_Escape == ESCAPE_ONE){
+			if (m_Escape == ESCAPE_A){
 				e = 1/(1+N);
-			} else if (m_Escape == ESCAPE_TWO) {
+			} else if (m_Escape == ESCAPE_B) {
 				if ((q > N) || (N == 0) || (q == 0)) {
 					return 1;
 				}
 				e = q / N;
 				
-			} else if (m_Escape == ESCAPE_THREE){
+			} else if (m_Escape == ESCAPE_C){
 				if (N == 0) {
 					return 1;
 				}
 				e = q / (N + q);
+			} else if (m_Escape == ESCAPE_D){
+				if ((q > N) || (N == 0) || (q == 0)) {
+					return 1;
+				}
+				e = (q/2) / N;
+			} else if (m_Escape == ESCAPE_P){
+				if ((q > N) || (N == 0) || (q == 0)) {
+					return 1;
+				}
+				if (getNumberofClassOccurred(1) == 0){
+					e = q / (N + q);
+					return e;
+				}
+				for(int i = 1; i<5; i++){
+					int numberOfClasses = getNumberofClassOccurred(i);
+					e -= (numberOfClasses/Math.pow(N, i))*Math.pow(-1, i); 
+ 				}
 			}
 			return e;
 		}
@@ -364,6 +384,17 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 				}
 				return w;
 			}
+		}
+		
+		public int getNumberofClassOccurred(int occurence){
+			int n = 0;
+			for (double o : m_Distribution){
+				if (o == occurence){
+					n++;
+				}
+			}
+			
+			return n;
 		}
 
 		/**
@@ -1605,7 +1636,7 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 	protected int m_Smoothing = SMOOTHING_NONE;
 	
 	/** The escape method */
-	protected int m_Escape = ESCAPE_ONE;
+	protected int m_Escape = ESCAPE_A;
 
 	/** The Tree object */
 	protected Tree m_Tree = null;
@@ -1654,16 +1685,25 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 
 	
 	/** Escape methods. */
-	public static final int ESCAPE_ONE = 1;
+	public static final int ESCAPE_A = 1;
 	
-	public static final int ESCAPE_TWO = 2;
+	public static final int ESCAPE_B = 2;
 
-	public static final int ESCAPE_THREE = 4;
+	public static final int ESCAPE_C = 4;
+	
+	public static final int ESCAPE_D = 8;
+	
+	public static final int ESCAPE_P = 16;
+
+	public static final int ESCAPE_X = 32;
 	
 	public static final Tag[] TAGS_ESCAPE = {
-		new Tag(ESCAPE_ONE, "Escape Method 1"),
-		new Tag(ESCAPE_TWO, "Escape Method 2"),
-		new Tag(ESCAPE_THREE, "Escape Method 3")
+		new Tag(ESCAPE_A, "Escape Method A"),
+		new Tag(ESCAPE_B, "Escape Method B"),
+		new Tag(ESCAPE_C, "Escape Method C"),
+		new Tag(ESCAPE_D, "Escape Method D"),
+		new Tag(ESCAPE_P, "Escape Method P"),
+		new Tag(ESCAPE_X, "Escape Method X")
 	};
 	
 	/**
@@ -1972,11 +2012,17 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 
 		newVector.addElement(new Option("\tPPM smoothing", "C", 1, "-C"));
 		
-		newVector.addElement(new Option("\tEscape method 1", "C1", 1, "-C1"));
+		newVector.addElement(new Option("\tEscape method A", "C1", 1, "-C1"));
 		
-		newVector.addElement(new Option("\tEscape method 2", "C2", 1, "-C2"));
+		newVector.addElement(new Option("\tEscape method B", "C2", 1, "-C2"));
 		
-		newVector.addElement(new Option("\tEscape method 3", "C3", 1, "-C3"));
+		newVector.addElement(new Option("\tEscape method C", "C3", 1, "-C3"));
+		
+		newVector.addElement(new Option("\tEscape method D", "C4", 1, "-C4"));
+		
+		newVector.addElement(new Option("\tEscape method P", "C5", 1, "-C5"));
+		
+		newVector.addElement(new Option("\tEscape method X", "C6", 1, "-C6"));
 		return newVector.elements();
 	}
 
@@ -2021,18 +2067,33 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 			options[current++] = "-C";
 			options[current++] = "";
 			
-			if (m_Escape == ESCAPE_ONE){
+			if (m_Escape == ESCAPE_A){
 				options[current++] = "-C1";
 				options[current++] = "";
 			}
 			
-			if (m_Escape == ESCAPE_TWO){
+			if (m_Escape == ESCAPE_B){
 				options[current++] = "-C2";
 				options[current++] = "";
 			}
 			
-			if (m_Escape == ESCAPE_THREE){
+			if (m_Escape == ESCAPE_C){
 				options[current++] = "-C3";
+				options[current++] = "";
+			}
+			
+			if (m_Escape == ESCAPE_D){
+				options[current++] = "-C4";
+				options[current++] = "";
+			}
+			
+			if (m_Escape == ESCAPE_P){
+				options[current++] = "-C5";
+				options[current++] = "";
+			}
+			
+			if (m_Escape == ESCAPE_X){
+				options[current++] = "-C6";
 				options[current++] = "";
 			}
 		}
@@ -2132,11 +2193,17 @@ public class REPTree extends AbstractClassifier implements OptionHandler,
 		}
 		
 		if (Utils.getFlag("C1", options)) {
-			setEscapeMethod(new SelectedTag(ESCAPE_ONE, TAGS_ESCAPE));
+			setEscapeMethod(new SelectedTag(ESCAPE_A, TAGS_ESCAPE));
 		} else if (Utils.getFlag("C2", options)) {
-			setEscapeMethod(new SelectedTag(ESCAPE_TWO, TAGS_ESCAPE));
+			setEscapeMethod(new SelectedTag(ESCAPE_B, TAGS_ESCAPE));
 		} else if (Utils.getFlag("C3", options)) {
-			setEscapeMethod(new SelectedTag(ESCAPE_THREE, TAGS_ESCAPE));
+			setEscapeMethod(new SelectedTag(ESCAPE_C, TAGS_ESCAPE));
+		} else if (Utils.getFlag("C4", options)) {
+			setEscapeMethod(new SelectedTag(ESCAPE_D, TAGS_ESCAPE));
+		} else if (Utils.getFlag("C5", options)) {
+			setEscapeMethod(new SelectedTag(ESCAPE_P, TAGS_ESCAPE));
+		} else if (Utils.getFlag("C6", options)) {
+			setEscapeMethod(new SelectedTag(ESCAPE_X, TAGS_ESCAPE));
 		}
 
 		Utils.checkForRemainingOptions(options);
